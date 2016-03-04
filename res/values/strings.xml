@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">DarcyMusic</string>
+    <string name="hello_world">Hello world!</string>
+    <string name="action_settings">Settings</string>
+
+    <string name="record">录制</string>
+    <string name="preview">预览</string>
+    <string name="re_record">重录</string>
+    <string name="add_music_track">添加音轨</string>
+    <string name="complete_record">完成录制</string>
+</resources>
