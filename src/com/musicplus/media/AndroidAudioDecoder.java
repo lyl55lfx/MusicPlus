@@ -31,26 +31,37 @@ public class AndroidAudioDecoder extends AudioDecoder{
 		final String encodeFile = mEncodeFile;
 		MediaExtractor extractor = new MediaExtractor();
 		extractor.setDataSource(encodeFile);
-		MediaFormat format = extractor.getTrackFormat(0);
-        String mime = format.getString(MediaFormat.KEY_MIME);
-        if(!mime.startsWith("audio/")){
-        	throw new IOException("not an valid audio file");
-        }
-        
+		
+		MediaFormat mediaFormat = null;
+		for (int i = 0; i < extractor.getTrackCount(); i++) {
+			MediaFormat format = extractor.getTrackFormat(i);
+			String mime = format.getString(MediaFormat.KEY_MIME);
+			if (mime.startsWith("audio/")) {
+				extractor.selectTrack(i);
+				mediaFormat = format;
+				break;
+			}
+		}
+		
+		if(mediaFormat == null){
+			DLog.e("not a valid file with audio track..");
+			extractor.release();
+			return null;
+		}
+		
         RawAudioInfo rawAudioInfo = new RawAudioInfo();
-        rawAudioInfo.channel = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
-        rawAudioInfo.sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE);
+        rawAudioInfo.channel = mediaFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
+        rawAudioInfo.sampleRate = mediaFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
         rawAudioInfo.tempRawFile = outFile;
         FileOutputStream fosDecoder = new FileOutputStream(rawAudioInfo.tempRawFile);
         
-        MediaCodec codec = MediaCodec.createDecoderByType(mime);
-        codec.configure(format, null, null, 0);
+        String mediaMime = mediaFormat.getString(MediaFormat.KEY_MIME);
+        MediaCodec codec = MediaCodec.createDecoderByType(mediaMime);
+        codec.configure(mediaFormat, null, null, 0);
         codec.start();
         
         ByteBuffer[] codecInputBuffers = codec.getInputBuffers();
         ByteBuffer[] codecOutputBuffers = codec.getOutputBuffers();
-        
-        extractor.selectTrack(0);
         
         final long kTimeOutUs = 5000;
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
@@ -88,6 +99,8 @@ public class AndroidAudioDecoder extends AudioDecoder{
 			        outBuf.get(data);
 			        totalRawSize += data.length;
 			        fosDecoder.write(data);
+			        if(mOnAudioDecoderListener != null)
+			        	mOnAudioDecoderListener.onDecode(data);
 			        
 			        codec.releaseOutputBuffer(outputBufIndex, false);
 			        

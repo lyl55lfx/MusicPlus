@@ -61,7 +61,6 @@ public class VideoRecorder {
 		protected Boolean doInBackground(Void... voids) {
 			if (prepareVideoRecorder()) {
 				isRecording = true;
-				mMediaRecorder.start();
 			} else {
 				release();
 				return false;
@@ -71,8 +70,11 @@ public class VideoRecorder {
 
 		@Override
 		protected void onPostExecute(Boolean result) {
-			if(result && mListener!= null)
-				mListener.onStarted();
+			if(result){
+				mMediaRecorder.start();
+				if(mListener!= null)
+					mListener.onStarted();
+			}
 		}
 	}
 

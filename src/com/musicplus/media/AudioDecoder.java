@@ -11,6 +11,8 @@ public abstract class AudioDecoder {
 	 
 	 String mEncodeFile;
 	 
+	 OnAudioDecoderListener mOnAudioDecoderListener;
+	 
 	 AudioDecoder(String encodefile){
 		 this.mEncodeFile = encodefile;
 	 }
@@ -18,6 +20,10 @@ public abstract class AudioDecoder {
 	 public static AudioDecoder createDefualtDecoder(String encodefile){
 		 return new AndroidAudioDecoder(encodefile);
 	 } 
+	 
+	 public void setOnAudioDecoderListener(OnAudioDecoderListener l ){
+		 this.mOnAudioDecoderListener = l;
+	 }
 	 
 	 /**
 	  * 解码
@@ -31,5 +37,9 @@ public abstract class AudioDecoder {
 		 public int size;
 		 public long sampleRate;
 		 public int channel;
+	 }
+	 
+	 public interface OnAudioDecoderListener{
+		 void onDecode(byte[] decodedBytes) throws IOException;
 	 }
 }
