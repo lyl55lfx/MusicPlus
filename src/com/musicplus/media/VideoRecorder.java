@@ -2,6 +2,8 @@ package com.musicplus.media;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.CyclicBarrier;
 
 import android.app.Activity;
 import android.hardware.Camera;
@@ -25,13 +27,16 @@ public class VideoRecorder {
 	private String mOutputFile;
 
 	private OnVideoRecordListener mListener;
-	private boolean isRecording = false;
+	private volatile boolean isRecording = false;
 	private boolean isValidCamera;
+	
+	private CyclicBarrier mRecordBarrier; //同步背景音乐
 
-	public VideoRecorder(Activity activity , TextureView preview, String outputFile) {
+	public VideoRecorder(Activity activity , TextureView preview, String outputFile, CyclicBarrier recordBarrier) {
 		this.mActivity = activity;
 		this.mPreview = preview;
 		this.mOutputFile = outputFile;
+		this.mRecordBarrier = recordBarrier;
 	}
 
 	public void setOnVideoRecordListener(OnVideoRecordListener l){
@@ -51,27 +56,41 @@ public class VideoRecorder {
 	
 	public void startRecord() {
 		if(isValidCamera && !isRecording){
-			new MediaPrepareTask().execute();
+			isRecording = true;
+			new MediaRecordTask().execute();
 		}
 	}
 
-	class MediaPrepareTask extends AsyncTask<Void, Void, Boolean> {
+	class MediaRecordTask extends AsyncTask<Void, Void, Boolean> {
 
 		@Override
 		protected Boolean doInBackground(Void... voids) {
 			if (prepareVideoRecorder()) {
-				isRecording = true;
+				if(mRecordBarrier != null){
+					try {
+						mRecordBarrier.await();
+						mMediaRecorder.start();
+						return true;
+					} catch (InterruptedException e) {
+						e.printStackTrace();
+					} catch (BrokenBarrierException e) {
+						e.printStackTrace();
+					}
+					return false;
+				}else{
+					mMediaRecorder.start();
+					return true;
+				}
 			} else {
+				isRecording = false;
 				release();
 				return false;
 			}
-			return true;
 		}
 
 		@Override
 		protected void onPostExecute(Boolean result) {
 			if(result){
-				mMediaRecorder.start();
 				if(mListener!= null)
 					mListener.onStarted();
 			}

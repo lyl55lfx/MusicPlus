@@ -14,12 +14,15 @@ import android.media.MediaFormat;
 import android.media.MediaMuxer;
 
 import com.musicplus.app.MainApplication;
+import com.musicplus.utils.DLog;
 
 /**
  * 视频混合音频
  * @author Darcy
  */
 public abstract class VideoMuxer {
+	
+	private static final String TAG = "VideoMuxer";
 	
 	String mOutputVideo;
 	
@@ -43,7 +46,7 @@ public abstract class VideoMuxer {
 		private static final String AUDIO_MIME = "audio/mp4a-latm";
 		private final static long audioBytesPerSample = 44100*16/8;
 
-		private int rawAudioSize;
+		private long rawAudioSize;
 		
 		public Mp4Muxer(String outputVideo) {
 			super(outputVideo);
@@ -56,9 +59,10 @@ public abstract class VideoMuxer {
 			MediaMuxer videoMuxer = null;
 			try {
 				
+				
 				final String outputVideo = mOutputVideo;
 				videoMuxer = new MediaMuxer(outputVideo,MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
-		        
+				
 				MediaFormat videoFormat = null;
 				MediaExtractor videoExtractor = new MediaExtractor();
 				videoExtractor.setDataSource(videoFilePath);
@@ -74,6 +78,7 @@ public abstract class VideoMuxer {
 				}
 				
 				int videoTrackIndex = videoMuxer.addTrack(videoFormat);
+				
 				int audioTrackIndex = 0;
 				
 				//decode 
@@ -81,13 +86,15 @@ public abstract class VideoMuxer {
 				String rawVidoeAudioFile = MainApplication.RECORD_AUDIO_PATH + "/" + System.currentTimeMillis();
 				audioDecoder.decodeToFile(rawVidoeAudioFile);
 				
-				final FileInputStream fisAudio1 = new FileInputStream(rawAudioFile);
-				final FileInputStream fisAudio2 = new FileInputStream(rawVidoeAudioFile);
+				final FileInputStream fisAudio1 = new FileInputStream(rawVidoeAudioFile);
+				final FileInputStream fisAudio2 = new FileInputStream(rawAudioFile);
+				
 				boolean readAudio1EOS = false;
 				boolean readAudio2EOS = false;
 				byte[] audio1Buffer = new byte[4096];
 				byte[] audio2Buffer = new byte[4096];
-				int readCount;
+				int audio1ReadCount = 0;
+				int audio2ReadCount = 0;
 				
 				final MultiAudioMixer audioMixer = MultiAudioMixer.createAudioMixer();
 				final byte[][] twoAudioBytes = new byte[2][];
@@ -105,7 +112,7 @@ public abstract class VideoMuxer {
 				int inputBufIndex, outputBufIndex;
 		        while(!sawOutputEOS){
 		        	if (!sawInputEOS) {
-		        		 inputBufIndex = audioEncoder.dequeueInputBuffer(500);
+		        		 inputBufIndex = audioEncoder.dequeueInputBuffer(10000);
 					     if (inputBufIndex >= 0) {
 					           ByteBuffer inputBuffer = audioInputBuffers[inputBufIndex];
 					           inputBuffer.clear();
@@ -117,18 +124,16 @@ public abstract class VideoMuxer {
 					           }
 					           
 					           if(!readAudio1EOS){
-					        	   readCount = fisAudio1.read(audio1Buffer);
-					        	   if(readCount == -1){
+					        	   audio1ReadCount = fisAudio1.read(audio1Buffer);
+					        	   if(audio1ReadCount == -1){
 					        		   readAudio1EOS = true;
-					        		   Arrays.fill(audio1Buffer, (byte)0);
 					        	   }
 					           }
 					           
 					           if(!readAudio2EOS){
-					        	   readCount = fisAudio2.read(audio2Buffer);
-					        	   if(readCount == -1){
+					        	   audio2ReadCount = fisAudio2.read(audio2Buffer);
+					        	   if(audio2ReadCount == -1){
 					        		   readAudio2EOS = true;
-					        		   Arrays.fill(audio2Buffer, (byte)0);
 					        	   }
 					           }
 					           
@@ -139,18 +144,32 @@ public abstract class VideoMuxer {
 						           
 						           byte[] mixAudioBytes;
 						           if(!readAudio1EOS && !readAudio2EOS){
-						        	   twoAudioBytes[0] = audio1Buffer;
-							           twoAudioBytes[1] = audio2Buffer;
+						        	   if(audio1ReadCount  == audio2ReadCount){
+						        		   twoAudioBytes[0] = audio1Buffer;
+								           twoAudioBytes[1] = audio2Buffer;
+						        	   }else if(audio1ReadCount > audio2ReadCount){
+						        		   twoAudioBytes[0] = audio1Buffer;
+						        		   Arrays.fill(audio2Buffer, audio2ReadCount -1, bufferSize, (byte)0);
+						        	   }else{
+						        		   Arrays.fill(audio1Buffer, audio1ReadCount -1, bufferSize, (byte)0);
+						        	   }
 						        	   mixAudioBytes = audioMixer.mixRawAudioBytes(twoAudioBytes);
+						        	   if(mixAudioBytes == null){
+						        		   DLog.e(TAG, "mix audio : null");
+						        	   }
+						        	   inputBuffer.put(mixAudioBytes);
+							           rawAudioSize += mixAudioBytes.length;
+							           audioEncoder.queueInputBuffer(inputBufIndex, 0, mixAudioBytes.length, audioTimeUs, 0);
 						           }else if(!readAudio1EOS && readAudio2EOS){
-						        	   mixAudioBytes = audio1Buffer;
+						        	   inputBuffer.put(audio1Buffer, 0, audio1ReadCount);
+							           rawAudioSize += audio1ReadCount;
+							           audioEncoder.queueInputBuffer(inputBufIndex, 0, audio1ReadCount, audioTimeUs, 0);
 						           }else{
-						        	   mixAudioBytes = audio2Buffer;
+						        	   inputBuffer.put(audio2Buffer, 0, audio2ReadCount);
+							           rawAudioSize += audio2ReadCount;
+							           audioEncoder.queueInputBuffer(inputBufIndex, 0, audio2ReadCount, audioTimeUs, 0);
 						           }
 						           
-						           inputBuffer.put(mixAudioBytes);
-						           rawAudioSize += mixAudioBytes.length;
-						           audioEncoder.queueInputBuffer(inputBufIndex, 0, mixAudioBytes.length, audioTimeUs, 0);
 						           audioTimeUs = (long) (1000000 * (rawAudioSize / 2.0) / audioBytesPerSample);
 					           }
 					     }
@@ -158,12 +177,23 @@ public abstract class VideoMuxer {
 		        	
 		        	outputBufIndex = audioEncoder.dequeueOutputBuffer(outBufferInfo, 10000);
 		        	if(outputBufIndex >= 0){
-		        		 ByteBuffer outBuffer = audioOutputBuffers[outputBufIndex];
-		        		 outBuffer = audioOutputBuffers[outputBufIndex];
-		        		 outBuffer.position(outBufferInfo.offset);
-		        		 outBuffer.limit(outBufferInfo.offset + outBufferInfo.size);
-		        		 videoMuxer.writeSampleData(audioTrackIndex, outBuffer,outBufferInfo);
-		                 audioEncoder.releaseOutputBuffer(outputBufIndex, false);
+		        		
+		        		// Simply ignore codec config buffers.
+		        		if ((outBufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG)!= 0) {
+		                     DLog.i(TAG, "audio encoder: codec config buffer");
+		                     audioEncoder.releaseOutputBuffer(outputBufIndex, false);
+		                     continue;
+		                 }
+		        		 
+		        		if(outBufferInfo.size != 0){
+			        		 ByteBuffer outBuffer = audioOutputBuffers[outputBufIndex];
+			        		 outBuffer.position(outBufferInfo.offset);
+			        		 outBuffer.limit(outBufferInfo.offset + outBufferInfo.size);
+			        		 DLog.i(TAG, String.format(" writing audio sample : size=%s , presentationTimeUs=%s", outBufferInfo.size, outBufferInfo.presentationTimeUs));
+			        		 videoMuxer.writeSampleData(audioTrackIndex, outBuffer, outBufferInfo);
+		        		}
+		                
+		        		audioEncoder.releaseOutputBuffer(outputBufIndex, false);
 		                 
 		                 if ((outBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
 					           sawOutputEOS = true;
@@ -171,8 +201,8 @@ public abstract class VideoMuxer {
 		        	}else if (outputBufIndex == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
 		        		audioOutputBuffers = audioEncoder.getOutputBuffers();
 				    } else if (outputBufIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-				        MediaFormat newFormat = audioEncoder.getOutputFormat();
-				        audioTrackIndex = videoMuxer.addTrack(newFormat);
+				        MediaFormat audioFormat = audioEncoder.getOutputFormat();
+				        audioTrackIndex = videoMuxer.addTrack(audioFormat);
 				        videoMuxer.start(); //start muxer
 				    }
 		        }
@@ -212,6 +242,7 @@ public abstract class VideoMuxer {
 				if(videoMuxer != null){
 					videoMuxer.stop();
 					videoMuxer.release();
+					DLog.i(TAG, "video mix complete.");
 				}
 			}
 		}

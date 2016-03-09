@@ -75,13 +75,12 @@ public class AndroidAudioDecoder extends AudioDecoder{
 			        if (inputBufIndex >= 0) {
 			            ByteBuffer dstBuf = codecInputBuffers[inputBufIndex];
 			            int sampleSize = extractor.readSampleData(dstBuf, 0);
-			            long presentationTimeUs = 0;
 			            if (sampleSize < 0) {
 			                DLog.i(TAG, "saw input EOS.");
 			                sawInputEOS = true;
 			                codec.queueInputBuffer(inputBufIndex,0,0,0,MediaCodec.BUFFER_FLAG_END_OF_STREAM );
 			            } else {
-			                presentationTimeUs = extractor.getSampleTime();
+			            	long presentationTimeUs = extractor.getSampleTime();
 			                codec.queueInputBuffer(inputBufIndex,0,sampleSize,presentationTimeUs,0);
 			                extractor.advance();
 			            }
@@ -90,17 +89,27 @@ public class AndroidAudioDecoder extends AudioDecoder{
 			    int res = codec.dequeueOutputBuffer(info, kTimeOutUs);
 			    if (res >= 0) {
 
-			        int outputBufIndex = res;
-			        ByteBuffer outBuf = codecOutputBuffers[outputBufIndex];
-			        
-			        outBuf.position(info.offset);
-			        outBuf.limit(info.offset + info.size);
-			        byte[] data = new byte[outBuf.remaining()];
-			        outBuf.get(data);
-			        totalRawSize += data.length;
-			        fosDecoder.write(data);
-			        if(mOnAudioDecoderListener != null)
-			        	mOnAudioDecoderListener.onDecode(data);
+			    	 int outputBufIndex = res;
+			    	// Simply ignore codec config buffers.
+	        		if ((info.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG)!= 0) {
+	                     DLog.i(TAG, "audio encoder: codec config buffer");
+	                     codec.releaseOutputBuffer(outputBufIndex, false);
+	                     continue;
+	                 }
+	        		 
+	        		if(info.size != 0){
+	        			
+	        			ByteBuffer outBuf = codecOutputBuffers[outputBufIndex];
+				        
+				        outBuf.position(info.offset);
+				        outBuf.limit(info.offset + info.size);
+				        byte[] data = new byte[info.size];
+				        outBuf.get(data);
+				        totalRawSize += data.length;
+				        fosDecoder.write(data);
+				        if(mOnAudioDecoderListener != null)
+				        	mOnAudioDecoderListener.onDecode(data);
+	        		}
 			        
 			        codec.releaseOutputBuffer(outputBufIndex, false);
 			        

@@ -1,9 +1,13 @@
 package com.musicplus.app.ui;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.CyclicBarrier;
 
 import android.content.Intent;
 import android.os.AsyncTask;
@@ -45,6 +49,7 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 	private Set<AudioEntry> addAudioTracks = new HashSet<AudioEntry>();
 	private MultiRawAudioPlayer mBackMisicPlayer;
 	private String mTempMixAudioFile;
+	private  CyclicBarrier recordBarrier = new CyclicBarrier(2);
 	
 	private int recordState;
 	private final static String TEMP_RECORD_VIDEO_FILE = MainApplication.TEMP_VIDEO_PATH + "/temp_record_video";
@@ -71,7 +76,7 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 		btnRedoRecord = findView(R.id.btn_re_record);
 		btnRedoRecord.setOnClickListener(this);
 		
-		videoRecorder = new VideoRecorder(this, svVideoPreview, TEMP_RECORD_VIDEO_FILE);
+		videoRecorder = new VideoRecorder(this, svVideoPreview, TEMP_RECORD_VIDEO_FILE,recordBarrier);
 		recordState = RECORD_STATE_INITIAL;
 		
 		LayoutParams lpPre = svVideoPreview.getLayoutParams();
@@ -125,11 +130,7 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 		super.onActivityResult(requestCode, resultCode, data);
 		if(requestCode == REQUEST_CODE_ADD_MUSIC && resultCode == RESULT_OK){
 			AudioEntry audioEntry = (AudioEntry) data.getSerializableExtra("audio");
-			if(audioEntry.mime.contains("x-ms-wma")){
-				addMisicTrack(audioEntry);
-			}else{
-				new DecodeAudioTask(audioEntry).execute();
-			}
+			new DecodeAudioTask(audioEntry).execute();
 		}
 	}
 	
@@ -141,24 +142,40 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 				public void onStarted() {
 					recordState = RECORD_STATE_RECORDING;
 					btnRecord.setText(R.string.complete_record);
-					playBackgroundMusic();
 				}
 				
 				public void onError(int errorCode) {
 				}
 			});
 			videoRecorder.startRecord();
+			playBackgroundMusic();
 		}else if(recordState == RECORD_STATE_RECORDING){
 			recordState = RECORD_STATE_DONE;
 			videoRecorder.release();
+			recordBarrier.reset();
 			stopBackgroundMusic();
 			btnRecord.postDelayed(new Runnable() {
 				@Override
 				public void run() {
 					new MixVideoAndAudioTask().execute();
 				}
-			}, 500);
+			}, 5000);
 		}
+	}
+	
+	@Override
+	public void onPlayStart() {
+		videoRecorder.startRecord();
+	}
+
+	@Override
+	public void onPlayStop(String tempMixFile) {
+		mTempMixAudioFile = tempMixFile;
+	}
+
+	@Override
+	public void onPlayComplete(String tempMixFile) {
+		mTempMixAudioFile = tempMixFile;
 	}
 	
 	private void performAddMusic(){
@@ -175,7 +192,7 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 	private void playBackgroundMusic(){
 		int trackSize = addAudioTracks.size();
 		if(trackSize > 0){
-			mBackMisicPlayer = new MultiRawAudioPlayer(addAudioTracks.toArray(new AudioEntry[trackSize]));
+			mBackMisicPlayer = new MultiRawAudioPlayer(addAudioTracks.toArray(new AudioEntry[trackSize]),recordBarrier);
 			mBackMisicPlayer.setOnRawAudioPlayListener(this);
 			mBackMisicPlayer.play();
 		}
@@ -190,9 +207,8 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 
 		@Override
 		protected Boolean doInBackground(Void... params) {
-			String videoFile = MainApplication.RECORD_VIDEO_PATH + "/"+System.currentTimeMillis()+".mp4";
+			String videoFile = MainApplication.RECORD_VIDEO_PATH + "/test.mp4";
 			VideoMuxer videoMuxer = VideoMuxer.createVideoMuxer(videoFile);
-			mTempMixAudioFile = MainApplication.TEMP_AUDIO_PATH + "/" + "aaa";
 			videoMuxer.mixRawAudio(new File(TEMP_RECORD_VIDEO_FILE), new File(mTempMixAudioFile));
 			return true;
 		}
@@ -214,15 +230,52 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 		
 		@Override
 		protected Boolean doInBackground(Void... params) {
-			AudioDecoder audioDec = AudioDecoder.createDefualtDecoder(decAudio.fileUrl);
-			String tempRawAudioFile = MainApplication.TEMP_AUDIO_PATH + "/" + MD5Util.getMD5Str(decAudio.fileUrl);
-			try {
-				audioDec.decodeToFile(tempRawAudioFile);
-				decAudio.fileUrl = tempRawAudioFile;
+			String decodeFilePath = MainApplication.TEMP_AUDIO_PATH + "/" + MD5Util.getMD5Str(decAudio.fileUrl);
+			File decodeFile = new File(decodeFilePath);
+			if(decodeFile.exists()){
+				decAudio.fileUrl = decodeFilePath;
 				return true;
-			} catch (IOException e) {
-				e.printStackTrace();
+			}
+			
+			if(decAudio.mime.contains("x-ms-wma")){
+				FileInputStream fisWavFile = null;
+				FileOutputStream fosRawAudioFile = null;
+				try {
+					 fisWavFile = new FileInputStream(decAudio.fileUrl);
+					 fosRawAudioFile = new FileOutputStream(decodeFile);
+					 fisWavFile.read(new byte[44]);
+					 byte[] rawBuf = new byte[1024];
+					 int readCount;
+					 while((readCount = fisWavFile.read(rawBuf)) != -1){
+						 fosRawAudioFile.write(rawBuf, 0, readCount);
+					 }
+					 return true;
+				} catch (FileNotFoundException e) {
+					e.printStackTrace();
+				} catch (IOException e) {
+					e.printStackTrace();
+				}finally{
+					try {
+					if(fisWavFile != null)
+						fisWavFile.close();
+						
+					if(fosRawAudioFile != null)
+						fosRawAudioFile.close();
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
+				}
 				return false;
+			}else{
+				AudioDecoder audioDec = AudioDecoder.createDefualtDecoder(decAudio.fileUrl);
+				try {
+					decAudio.fileUrl = decodeFilePath;
+					audioDec.decodeToFile(decodeFilePath);
+					return true;
+				} catch (IOException e) {
+					e.printStackTrace();
+					return false;
+				}
 			}
 		}
 		
@@ -247,20 +300,5 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 		tvArtist.setText(decAudio.artist);
 		
 		containerAudioTracks.addView(viewTrack);
-	}
-
-	@Override
-	public void onPlayStart() {
-		
-	}
-
-	@Override
-	public void onPlayStop() {
-		
-	}
-
-	@Override
-	public void onPlayComplete(String tempMixFile) {
-		mTempMixAudioFile = tempMixFile;
 	}
 }

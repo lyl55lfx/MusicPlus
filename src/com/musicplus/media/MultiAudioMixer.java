@@ -102,7 +102,7 @@ public abstract class MultiAudioMixer {
 		 * @param mixBytes
 		 * @throws AudioMixException
 		 */
-		void onMixing(byte[] mixBytes) throws AudioMixException;
+		void onMixing(byte[] mixBytes) throws IOException;
 		
 		void onMixError(int errorCode);
 		
@@ -140,6 +140,7 @@ public abstract class MultiAudioMixer {
 			for(int rw = 0 ; rw < bMulRoadAudioes.length ; ++rw){
 				if(bMulRoadAudioes[rw].length != realMixAudio.length){
 					Log.e("app", "column of the road of audio + " + rw +" is diffrent.");
+					return null;
 				}
 			}
 			

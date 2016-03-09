@@ -5,6 +5,8 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.CyclicBarrier;
 
 import android.media.AudioFormat;
 import android.media.AudioManager;
@@ -37,6 +39,7 @@ public class MultiRawAudioPlayer {
 	private static final int MSG_PLAY_COMPLETE = 0x3;
 	
 	private EventHandler mEventHandler = new EventHandler();
+	private CyclicBarrier mRecordBarrier; //同步录像
 	
 	private AudioEntry[] mAudioEntries;
 	
@@ -49,6 +52,7 @@ public class MultiRawAudioPlayer {
 		}
 		
 		public void handleMessage(android.os.Message msg) {
+			String tempMixFile = (String) msg.obj;
 			switch(msg.what){
 			case MSG_PLAY_START:
 				if(event != null)
@@ -56,10 +60,9 @@ public class MultiRawAudioPlayer {
 				break;
 			case MSG_PLAY_STOP:
 				if(event != null)
-					event.onPlayStop();
+					event.onPlayStop(tempMixFile);
 				break;
 			case MSG_PLAY_COMPLETE:
-				String tempMixFile = (String) msg.obj;
 				if(event != null)
 					event.onPlayComplete(tempMixFile);
 				break;
@@ -67,8 +70,9 @@ public class MultiRawAudioPlayer {
 		};
 	}
 	
-	public MultiRawAudioPlayer(AudioEntry[] audioEntries){
+	public MultiRawAudioPlayer(AudioEntry[] audioEntries,CyclicBarrier recordBarrier){
 		this.mAudioEntries = audioEntries;
+		this.mRecordBarrier = recordBarrier;
 	}
 	
 	public void setOnRawAudioPlayListener(OnRawAudioPlayListener l){
@@ -93,6 +97,10 @@ public class MultiRawAudioPlayer {
 		}
 	}
 	
+	public void testPlaySync(){
+		new PlayThread().run();
+	}
+	
 	/**
 	 * 停止播放
 	 */
@@ -114,6 +122,18 @@ public class MultiRawAudioPlayer {
 		return  new  AudioTrack(AudioManager.STREAM_MUSIC, sampleRateInHz, channelConfig, audioFormat, bufferSizeInBytes, AudioTrack.MODE_STREAM);
 	}
 	
+	private void waitForRecordStart(){
+		if(mRecordBarrier != null){
+			try {
+				mRecordBarrier.await();
+			} catch (BrokenBarrierException e) {
+				e.printStackTrace();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+	}
+	 
 	private class PlayThread extends Thread{
 		
 		@Override
@@ -127,20 +147,15 @@ public class MultiRawAudioPlayer {
 				sbMix.append(audioEntry.id);
 			}
 			
-			File tempMixFile = null;
 			boolean hasMixBefore = false;
-			if(audioSize > 1){
-				String mixFilePath = MainApplication.TEMP_AUDIO_PATH + "/" +MD5Util.getMD5Str(sbMix.toString());
-				tempMixFile = new File(mixFilePath);
-				if(tempMixFile.exists()){
-					hasMixBefore = true;
-				}
-			}
+			String mixFilePath = MainApplication.TEMP_AUDIO_PATH + "/" +MD5Util.getMD5Str(sbMix.toString());
+			File tempMixFile = new File(mixFilePath);
 			
 			final AudioTrack audioTrack = createTrack();
+			audioTrack.play();
+			
 			try{
-				audioTrack.play();
-				
+				final FileOutputStream fosTempMixAudio = new FileOutputStream(tempMixFile);
 				//single audio
 				if(audioSize == 1 || hasMixBefore){
 					FileInputStream audioInput = null;
@@ -150,32 +165,43 @@ public class MultiRawAudioPlayer {
 						byte[] audioData = new byte[512];
 						int readCount=0, totalSize=0;
 						
-						mEventHandler.sendEmptyMessage(MSG_PLAY_START);
+						if(!stopped && (readCount = audioInput.read(audioData))!= -1){
+							fosTempMixAudio.write(audioData, 0, readCount);
+							mEventHandler.sendEmptyMessage(MSG_PLAY_START);
+							waitForRecordStart();
+							audioTrack.write(audioData, 0, readCount);
+							totalSize += readCount;
+						}
 						
 						while(!stopped && (readCount = audioInput.read(audioData))!= -1){
+							fosTempMixAudio.write(audioData, 0, readCount);
 							audioTrack.write(audioData, 0, readCount);
 							totalSize += readCount;
 						}
 						
 						if(totalSize >= singleAudioFile.length()){
-							Message completeMsg = mEventHandler.obtainMessage(MSG_PLAY_COMPLETE, singleAudioFile.getAbsolutePath());
+							Message completeMsg = mEventHandler.obtainMessage(MSG_PLAY_COMPLETE, tempMixFile.getAbsolutePath());
 							mEventHandler.sendMessage(completeMsg);
 						}
 						
 						if(stopped){
-							mEventHandler.sendEmptyMessage(MSG_PLAY_STOP);
+							Message stopMsg = mEventHandler.obtainMessage(MSG_PLAY_STOP, tempMixFile.getAbsolutePath());
+							mEventHandler.sendMessage(stopMsg);
 						}
 					} catch (FileNotFoundException e) {
 						e.printStackTrace();
 					} catch (IOException e) {
 						e.printStackTrace();
 					}finally{
-						if(audioInput != null)
-							try {
+						try {
+							if(audioInput != null)
 								audioInput.close();
-							} catch (IOException e) {
-								e.printStackTrace();
-							}
+							
+							if(fosTempMixAudio != null)
+								fosTempMixAudio.close();
+						} catch (IOException e) {
+							e.printStackTrace();
+						}
 					}
 					return;
 				}
@@ -185,31 +211,22 @@ public class MultiRawAudioPlayer {
 				final File mixAudioTempFile = tempMixFile;
 				mixer.setOnAudioMixListener(new OnAudioMixListener() {
 					
-					FileOutputStream fosTempMixAudio = new FileOutputStream(mixAudioTempFile);
-					
 					boolean isFirst = false;
-					boolean isTempMixFileError = false;
 					
-					public void onMixing(byte[] mixBytes) throws AudioMixException {
+					public void onMixing(byte[] mixBytes) throws IOException {
 						if(stopped){
-							mEventHandler.sendEmptyMessage(MSG_PLAY_STOP);
+							fosTempMixAudio.close();
+							Message stopMsg = mEventHandler.obtainMessage(MSG_PLAY_STOP, mixAudioTempFile.getAbsolutePath());
+							mEventHandler.sendMessage(stopMsg);
 							throw new AudioMixException("stop play the mix audios.");
 						}else{
+							fosTempMixAudio.write(mixBytes);
 							if(isFirst){
 								isFirst = true;
 								mEventHandler.sendEmptyMessage(MSG_PLAY_START);
+								waitForRecordStart();
 							}
-							
 							audioTrack.write(mixBytes, 0, mixBytes.length);
-							
-							if(!isTempMixFileError){
-								try {
-									fosTempMixAudio.write(mixBytes);
-								} catch (IOException e) {
-									isTempMixFileError = true;
-									e.printStackTrace();
-								}
-							}
 						}
 					}
 					
@@ -228,10 +245,6 @@ public class MultiRawAudioPlayer {
 					}
 					
 					public void onMixComplete() {
-						
-						if(isTempMixFileError){
-							mixAudioTempFile.delete();
-						}
 						
 						if(fosTempMixAudio != null){
 							try {
@@ -261,7 +274,7 @@ public class MultiRawAudioPlayer {
 	
 	public interface OnRawAudioPlayListener{
 		void onPlayStart();
-		void onPlayStop();
+		void onPlayStop(String tempMixFile);
 		void onPlayComplete(String tempMixFile);
 	}
 }
