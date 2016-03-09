@@ -83,18 +83,19 @@ public abstract class VideoMuxer {
 				
 				//decode 
 				AndroidAudioDecoder audioDecoder = new AndroidAudioDecoder(videoFilePath);
-				String rawVidoeAudioFile = MainApplication.RECORD_AUDIO_PATH + "/" + System.currentTimeMillis();
-				audioDecoder.decodeToFile(rawVidoeAudioFile);
+				String extractAudioFilePath = MainApplication.RECORD_AUDIO_PATH + "/" + System.currentTimeMillis();
+				audioDecoder.decodeToFile(extractAudioFilePath);
 				
-				final FileInputStream fisAudio1 = new FileInputStream(rawVidoeAudioFile);
-				final FileInputStream fisAudio2 = new FileInputStream(rawAudioFile);
+				File extractAudioFile = new File(extractAudioFilePath);
+				final FileInputStream fisExtractAudio = new FileInputStream(extractAudioFile);
+				final FileInputStream fisMixAudio = new FileInputStream(rawAudioFile);
 				
-				boolean readAudio1EOS = false;
-				boolean readAudio2EOS = false;
-				byte[] audio1Buffer = new byte[4096];
-				byte[] audio2Buffer = new byte[4096];
-				int audio1ReadCount = 0;
-				int audio2ReadCount = 0;
+				boolean readExtractAudioEOS = true;
+				boolean readMixAudioEOS = false;
+				byte[] extractAudioBuffer = new byte[4096];
+				byte[] mixAudioBuffer = new byte[4096];
+				int extractAudioReadCount = 0;
+				int mixAudioReadCount = 0;
 				
 				final MultiAudioMixer audioMixer = MultiAudioMixer.createAudioMixer();
 				final byte[][] twoAudioBytes = new byte[2][];
@@ -118,40 +119,40 @@ public abstract class VideoMuxer {
 					           inputBuffer.clear();
 					           
 					           int bufferSize = inputBuffer.remaining();
-					           if(bufferSize != audio1Buffer.length){
-					        	   audio1Buffer = new byte[bufferSize];
-						           audio2Buffer = new byte[bufferSize];
+					           if(bufferSize != extractAudioBuffer.length){
+					        	   extractAudioBuffer = new byte[bufferSize];
+					        	   mixAudioBuffer = new byte[bufferSize];
 					           }
 					           
-					           if(!readAudio1EOS){
-					        	   audio1ReadCount = fisAudio1.read(audio1Buffer);
-					        	   if(audio1ReadCount == -1){
-					        		   readAudio1EOS = true;
+					           if(!readExtractAudioEOS){
+					        	   extractAudioReadCount = fisExtractAudio.read(extractAudioBuffer);
+					        	   if(extractAudioReadCount == -1){
+					        		   readExtractAudioEOS = true;
 					        	   }
 					           }
 					           
-					           if(!readAudio2EOS){
-					        	   audio2ReadCount = fisAudio2.read(audio2Buffer);
-					        	   if(audio2ReadCount == -1){
-					        		   readAudio2EOS = true;
+					           if(!readMixAudioEOS){
+					        	   mixAudioReadCount = fisMixAudio.read(mixAudioBuffer);
+					        	   if(mixAudioReadCount == -1){
+					        		   readMixAudioEOS = true;
 					        	   }
 					           }
 					           
-					           if(readAudio1EOS && readAudio2EOS){
-									audioEncoder.queueInputBuffer(inputBufIndex,0 , 0 , 0 ,MediaCodec.BUFFER_FLAG_END_OF_STREAM);
-									sawInputEOS = true;
+					           if(readExtractAudioEOS && readMixAudioEOS){
+				        		   audioEncoder.queueInputBuffer(inputBufIndex,0 , 0 , 0 ,MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+					        	   sawInputEOS = true;
 					           }else{
 						           
 						           byte[] mixAudioBytes;
-						           if(!readAudio1EOS && !readAudio2EOS){
-						        	   if(audio1ReadCount  == audio2ReadCount){
-						        		   twoAudioBytes[0] = audio1Buffer;
-								           twoAudioBytes[1] = audio2Buffer;
-						        	   }else if(audio1ReadCount > audio2ReadCount){
-						        		   twoAudioBytes[0] = audio1Buffer;
-						        		   Arrays.fill(audio2Buffer, audio2ReadCount -1, bufferSize, (byte)0);
+						           if(!readExtractAudioEOS && !readMixAudioEOS){
+						        	   if(extractAudioReadCount  == mixAudioReadCount){
+						        		   twoAudioBytes[0] = extractAudioBuffer;
+								           twoAudioBytes[1] = mixAudioBuffer;
+						        	   }else if(extractAudioReadCount > mixAudioReadCount){
+						        		   twoAudioBytes[0] = extractAudioBuffer;
+						        		   Arrays.fill(mixAudioBuffer, mixAudioReadCount -1, bufferSize, (byte)0);
 						        	   }else{
-						        		   Arrays.fill(audio1Buffer, audio1ReadCount -1, bufferSize, (byte)0);
+						        		   Arrays.fill(extractAudioBuffer, extractAudioReadCount -1, bufferSize, (byte)0);
 						        	   }
 						        	   mixAudioBytes = audioMixer.mixRawAudioBytes(twoAudioBytes);
 						        	   if(mixAudioBytes == null){
@@ -160,14 +161,14 @@ public abstract class VideoMuxer {
 						        	   inputBuffer.put(mixAudioBytes);
 							           rawAudioSize += mixAudioBytes.length;
 							           audioEncoder.queueInputBuffer(inputBufIndex, 0, mixAudioBytes.length, audioTimeUs, 0);
-						           }else if(!readAudio1EOS && readAudio2EOS){
-						        	   inputBuffer.put(audio1Buffer, 0, audio1ReadCount);
-							           rawAudioSize += audio1ReadCount;
-							           audioEncoder.queueInputBuffer(inputBufIndex, 0, audio1ReadCount, audioTimeUs, 0);
+						           }else if(!readExtractAudioEOS && readMixAudioEOS){
+						        	   inputBuffer.put(extractAudioBuffer, 0, extractAudioReadCount);
+							           rawAudioSize += extractAudioReadCount;
+							           audioEncoder.queueInputBuffer(inputBufIndex, 0, extractAudioReadCount, audioTimeUs, 0);
 						           }else{
-						        	   inputBuffer.put(audio2Buffer, 0, audio2ReadCount);
-							           rawAudioSize += audio2ReadCount;
-							           audioEncoder.queueInputBuffer(inputBufIndex, 0, audio2ReadCount, audioTimeUs, 0);
+						        	   inputBuffer.put(mixAudioBuffer, 0, mixAudioReadCount);
+							           rawAudioSize += mixAudioReadCount;
+							           audioEncoder.queueInputBuffer(inputBufIndex, 0, mixAudioReadCount, audioTimeUs, 0);
 						           }
 						           
 						           audioTimeUs = (long) (1000000 * (rawAudioSize / 2.0) / audioBytesPerSample);
@@ -190,7 +191,12 @@ public abstract class VideoMuxer {
 			        		 outBuffer.position(outBufferInfo.offset);
 			        		 outBuffer.limit(outBufferInfo.offset + outBufferInfo.size);
 			        		 DLog.i(TAG, String.format(" writing audio sample : size=%s , presentationTimeUs=%s", outBufferInfo.size, outBufferInfo.presentationTimeUs));
-			        		 videoMuxer.writeSampleData(audioTrackIndex, outBuffer, outBufferInfo);
+			        		 if(lastAudioPresentationTimeUs < outBufferInfo.presentationTimeUs){
+			        			 videoMuxer.writeSampleData(audioTrackIndex, outBuffer, outBufferInfo);
+				        		 lastAudioPresentationTimeUs = outBufferInfo.presentationTimeUs;
+			        		 }else{
+			        			 DLog.e(TAG, "error sample! its presentationTimeUs should not lower than before.");
+			        		 }
 		        		}
 		                
 		        		audioEncoder.releaseOutputBuffer(outputBufIndex, false);
@@ -207,8 +213,8 @@ public abstract class VideoMuxer {
 				    }
 		        }
 				
-		        fisAudio1.close();
-		        fisAudio2.close();
+		        fisExtractAudio.close();
+		        fisMixAudio.close();
 		        audioEncoder.stop();
 			    audioEncoder.release();
 		        
@@ -260,5 +266,6 @@ public abstract class VideoMuxer {
 			return codec;
 		}
 
+		private long lastAudioPresentationTimeUs = -1;
 	}
 }
