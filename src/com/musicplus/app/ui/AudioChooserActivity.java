@@ -35,11 +35,15 @@ import com.musicplus.entry.AudioEntry;
  */
 public class AudioChooserActivity extends BaseActivity {
 
-	private static final String[] SUPPORT_DECODE_AUDIOFORMAT = {"audio/mpeg", "audio/x-ms-wma","audio/mp4a-latm"};
+	private static final String[] SUPPORT_DECODE_AUDIOFORMAT = {"audio/mpeg", "audio/x-ms-wma","audio/mp4a-latm" ,"audio/x-wav"};
 	
 	private RecyclerView mRvAudio;
 	private MusicPlayInterface mMisPlayService;
 
+	private static final int PAGE_SIZE = 20;
+	private int mPage = 1;
+	private boolean mHasMore = true;
+	
 	private ServiceConnection mMisSerciveConn = new ServiceConnection() {
 		@Override
 		public void onServiceDisconnected(ComponentName name) {
@@ -52,12 +56,25 @@ public class AudioChooserActivity extends BaseActivity {
 		}
 	};
 	
+	private RecyclerView.OnScrollListener mRvScrollListener = new RecyclerView.OnScrollListener(){
+		public void onScrollStateChanged(RecyclerView recyclerView, int newState) {
+			if(newState == RecyclerView.SCROLL_STATE_SETTLING){
+				//加载下页
+				if(mHasMore){
+					mPage++;
+					new GetAudiosTask(AudioChooserActivity.this).execute();
+				}
+			}
+		};
+	};
+	
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_list);
 		mRvAudio = findView(R.id.recycler_view);
 		mRvAudio.setLayoutManager(new LinearLayoutManager(this));
+		mRvAudio.addOnScrollListener(mRvScrollListener);
 		new GetAudiosTask(this).execute();
 		Intent misIntent = new Intent(this,LocalMusicPlayService.class);
 		bindService(misIntent, mMisSerciveConn, BIND_AUTO_CREATE);
@@ -95,22 +112,29 @@ public class AudioChooserActivity extends BaseActivity {
 		
 		@Override
 		protected List<AudioEntry> doInBackground(Void... params) {
-			return getAllAudios(context);
+			return getLocalAudioes(context, mPage, PAGE_SIZE);
 		}
 		
 		@Override
 		protected void onPostExecute(List<AudioEntry> result) {
 			super.onPostExecute(result);
-			mRvAudio.setAdapter(new AudioInfoAdapter(context,result));
+			if(result == null || result.isEmpty()){
+				mHasMore = false;
+			}else{
+				mRvAudio.setAdapter(new AudioInfoAdapter(context,result));
+			}
 		}
 		
 		/**
 		 * 获取sd卡所有的音频文件
 		 * 
+		 * @param context
+		 * @param page 从1开始
+		 * @param context
 		 * @return
 		 * @throws Exception
 		 */
-		private ArrayList<AudioEntry> getAllAudios(Context context) {
+		private ArrayList<AudioEntry> getLocalAudioes(Context context , int page , int pageSize) {
 
 			ArrayList<AudioEntry> audios = null;
 
@@ -119,7 +143,11 @@ public class AudioChooserActivity extends BaseActivity {
 			for(int i = 0; i != size ; ++i){
 				selectionBuilder.append("mime_type=? or ");
 			}
-			final String selection = selectionBuilder.substring(0, selectionBuilder.length() - 3);
+			int sbLen = selectionBuilder.length();
+			selectionBuilder.delete(sbLen - 3, sbLen);
+			
+			final String selection = selectionBuilder.toString();
+			final String orderBy = String.format("%s LIMIT %s , %s ",MediaStore.Audio.Media.DEFAULT_SORT_ORDER, (page-1)*pageSize , pageSize);
 			
 			Cursor cursor = context.getContentResolver().query(
 					MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
@@ -134,7 +162,7 @@ public class AudioChooserActivity extends BaseActivity {
 							MediaStore.Audio.Media.SIZE,
 							MediaStore.Audio.Media.DATA },
 							selection,
-							SUPPORT_DECODE_AUDIOFORMAT, null);
+							SUPPORT_DECODE_AUDIOFORMAT, orderBy);
 
 			audios = new ArrayList<AudioEntry>();
 

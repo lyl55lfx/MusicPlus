@@ -8,15 +8,14 @@ import android.media.MediaFormat;
 public class MediaUtils {
 
 	/**
-	 * 该音频是否符合采样率是sampleRate,通道数是channelCount,采样位数是bitsPerSample,值为-1表示忽略该条件
+	 * 该音频是否符合采样率是sampleRate,通道数是channelCount,值为-1表示忽略该条件
 	 * 
 	 * @param audioFile
 	 * @param sampleRate
 	 * @param channelCount
-	 * @param bitsPerSample
 	 * @return
 	 */
-	public static boolean isMatchAudioFormat(String audioFile, int sampleRate,int channelCount,int bitsPerSample){
+	public static boolean isMatchAudioFormat(String audioFile, int sampleRate,int channelCount){
 		MediaExtractor mex = new MediaExtractor();
 	    try {
 	        mex.setDataSource(audioFile);
@@ -35,10 +34,6 @@ public class MediaUtils {
 	    	result = channelCount == mf.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
 	    }
 	
-	    if(result && bitsPerSample != -1){
-	    	//not yep...
-	    }
-	    
 	    mex.release();
 	    
 	    return result;
