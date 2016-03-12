@@ -11,8 +11,13 @@ import java.util.concurrent.CyclicBarrier;
 
 import android.app.ProgressDialog;
 import android.content.Intent;
+import android.media.AudioManager;
+import android.media.MediaPlayer;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.view.Surface;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup.LayoutParams;
@@ -46,7 +51,20 @@ import com.musicplus.utils.MD5Util;
  */
 public class ComposeActivity extends BaseActivity implements View.OnClickListener, OnRawAudioPlayListener{
 	
-	private TextureView svVideoPreview;
+	private final static String TEMP_RECORD_VIDEO_FILE = MainApplication.TEMP_VIDEO_PATH + "/temp_record_video";
+	private final static String FINAL_MIX_VIDEO_FILE = MainApplication.RECORD_VIDEO_PATH + "/final_mix_video.mp4";
+	
+	private final static int RECORD_STATE_INITIAL = 0x0;
+	private final static int RECORD_STATE_PREPARING = 0x1;
+	private final static int RECORD_STATE_RECORDING = 0x2;
+	private final static int RECORD_STATE_DONE = 0x3;
+	
+	private final static int REQUEST_CODE_ADD_MUSIC = 0x1;
+	
+	public final static String EX_INCLUDE_VIDEO_AUDIO = "include-video-audio";
+
+	
+	private SurfaceView svVideoPreview;
 	private Button btnRecord;
 	private Button btnAddMusic;
 	private Button btnPreview;
@@ -59,18 +77,10 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 	private  CyclicBarrier recordBarrier = new CyclicBarrier(2);
 	private ProgressDialog dlgDecoding;
 	private ProgressDialog dlgMuxing;
+	private MediaPlayer videoPlayer;
+	private String finalMixVideo;
 	
 	private int recordState;
-	private final static String TEMP_RECORD_VIDEO_FILE = MainApplication.TEMP_VIDEO_PATH + "/temp_record_video";
-	
-	private final static int RECORD_STATE_INITIAL = 0x0;
-	private final static int RECORD_STATE_PREPARING = 0x1;
-	private final static int RECORD_STATE_RECORDING = 0x2;
-	private final static int RECORD_STATE_DONE = 0x3;
-	
-	private final static int REQUEST_CODE_ADD_MUSIC = 0x1;
-	
-	public final static String EX_INCLUDE_VIDEO_AUDIO = "include-video-audio";
 	private boolean isIncludeVideoAudio = false;
 	private static final int MAX_PROGRESS = 100;
 	
@@ -120,6 +130,7 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 			performAddMusic();
 			break;
 		case R.id.btn_preview:
+			performPreview();
 			break;
 		case R.id.btn_re_record:
 			performRedoRecord();
@@ -188,6 +199,8 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 					final boolean hasBackgroundMisic = hasBackgroundMisic();
 					if(hasBackgroundMisic){
 						new MixVideoAndAudioTask().execute();
+					}else{
+						finalMixVideo = TEMP_RECORD_VIDEO_FILE;
 					}
 				}
 			}, 500);
@@ -221,6 +234,12 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 		videoRecorder.startPreview();
 	}
 	
+	private void performPreview(){
+		if(svVideoPreview != null && finalMixVideo != null){
+			new VideoPlayTask(svVideoPreview, finalMixVideo).execute();
+		}
+	}
+	
 	private void playBackgroundMusic(){
 		int trackSize = addAudioTracks.size();
 		if(trackSize > 0){
@@ -243,8 +262,8 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 
 		@Override
 		protected Boolean doInBackground(Void... params) {
-			String videoFile = MainApplication.RECORD_VIDEO_PATH + "/test.mp4";
-			VideoMuxer videoMuxer = VideoMuxer.createVideoMuxer(videoFile);
+			finalMixVideo = FINAL_MIX_VIDEO_FILE;
+			VideoMuxer videoMuxer = VideoMuxer.createVideoMuxer(finalMixVideo);
 			videoMuxer.mixRawAudio(new File(TEMP_RECORD_VIDEO_FILE), new File(mTempMixAudioFile), isIncludeVideoAudio);
 			return true;
 		}
@@ -368,4 +387,43 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 		}
 	}
 	
+	class VideoPlayTask extends AsyncTask<Void, Long, Boolean>{
+		
+		private SurfaceView surfaceView;
+		
+		private String vidoeFile;
+		
+		VideoPlayTask(SurfaceView surfaceView,String vidoeFile){
+			this.surfaceView = surfaceView;
+			this.vidoeFile = vidoeFile;
+		}
+		
+		@Override
+		protected Boolean doInBackground(Void... params) {
+            try {
+            	if(videoPlayer == null){
+            		videoPlayer = new MediaPlayer();
+            	}else{
+            		videoPlayer.reset();
+            	}
+    			videoPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
+    			videoPlayer.setDisplay(surfaceView.getHolder());
+            	videoPlayer.setDataSource(vidoeFile);
+            	videoPlayer.prepare();
+            	return true;
+            } catch (Exception e) {
+                e.printStackTrace();
+                videoPlayer.release();
+                return false;
+            }
+		}
+		
+		@Override
+		protected void onPostExecute(Boolean result) {
+			super.onPostExecute(result);
+			if(result){
+				videoPlayer.start();
+			}
+		}
+	}
 }

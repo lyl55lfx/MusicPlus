@@ -10,10 +10,10 @@ import android.hardware.Camera;
 import android.media.MediaRecorder;
 import android.os.AsyncTask;
 import android.view.Surface;
-import android.view.TextureView;
+import android.view.SurfaceView;
 
 /**
- * 录制视频
+ * video recoder
  * 
  * @author Darcy
  */
@@ -21,7 +21,7 @@ public class VideoRecorder {
 
 	private Activity mActivity;
 	private MediaRecorder mMediaRecorder;
-	private TextureView mPreview;
+	private SurfaceView mPreview;
 	private int mVidoeWidth,mVideoHeight;
 	private Camera mCamera;
 	private String mOutputFile;
@@ -32,7 +32,7 @@ public class VideoRecorder {
 	
 	private CyclicBarrier mRecordBarrier; //同步背景音乐
 
-	public VideoRecorder(Activity activity , TextureView preview, String outputFile, CyclicBarrier recordBarrier) {
+	public VideoRecorder(Activity activity , SurfaceView preview, String outputFile, CyclicBarrier recordBarrier) {
 		this.mActivity = activity;
 		this.mPreview = preview;
 		this.mOutputFile = outputFile;
@@ -98,23 +98,20 @@ public class VideoRecorder {
 	}
 
 	private void prepareCamera() throws IOException{
-		mCamera = CameraHelper.getDefaultCameraInstance();
+		mCamera = Camera.open();
 		setCameraDisplayOrientation(mActivity, Camera.CameraInfo.CAMERA_FACING_BACK, mCamera);
 		
 		int previewWidth = mPreview.getWidth();
 		int previewHeight = mPreview.getHeight();
 		Camera.Parameters parameters = mCamera.getParameters();
 		List<Camera.Size> supportedPreviewSizes = parameters.getSupportedPreviewSizes();
-		Camera.Size optimalSize = CameraHelper.getOptimalPreviewSize(supportedPreviewSizes, previewWidth,previewHeight);
-		optimalSize.width = 640;
-		optimalSize.height = 480;
-		parameters.setPreviewSize(optimalSize.width,optimalSize.height);
-		//parameters.setRotation(90);
+		parameters.setPreviewSize(640,480);
+		parameters.setRotation(90);
 		mCamera.setParameters(parameters);
-		mVidoeWidth = optimalSize.width;
-		mVideoHeight = optimalSize.height;
+		mVidoeWidth = 640;
+		mVideoHeight = 480;
 		
-        mCamera.setPreviewTexture(mPreview.getSurfaceTexture());
+        mCamera.setPreviewDisplay(mPreview.getHolder());
 	}
 	
 	private void setCameraDisplayOrientation(Activity activity,
@@ -146,6 +143,7 @@ public class VideoRecorder {
 		
 		mCamera.unlock();
 		mMediaRecorder.setCamera(mCamera);
+		mMediaRecorder.setOrientationHint(90);
 		
 		mMediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
 		mMediaRecorder.setVideoSource(MediaRecorder.VideoSource.CAMERA);
@@ -158,7 +156,7 @@ public class VideoRecorder {
 		mMediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
 		mMediaRecorder.setVideoFrameRate(MediaConstants.VIDEO_FRAME_RATE);
 		mMediaRecorder.setVideoSize(mVidoeWidth, mVideoHeight);
-		mMediaRecorder.setVideoEncodingBitRate(512 * 1000);
+		mMediaRecorder.setVideoEncodingBitRate(8000000);
 		
 		mMediaRecorder.setOutputFile(mOutputFile);
 
