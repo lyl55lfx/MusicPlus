@@ -6,4 +6,4 @@ MusicPlus基于MediaExtractor、MediaMuxer、和MediaCodec等工具类，来实�
 2. 更多介绍: http://www.darcye.com/article/00301860
 
 # 截图
-![image](https://github.com/YeDaxia/MusicPlus/blob/master/preview.gif)
+![image](https://github.com/YeDaxia/MusicPlus/blob/master/preview.png)
