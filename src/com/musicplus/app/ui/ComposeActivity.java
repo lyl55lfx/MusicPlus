@@ -9,14 +9,15 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.CyclicBarrier;
 
+import android.app.ProgressDialog;
 import android.content.Intent;
 import android.os.AsyncTask;
 import android.os.Bundle;
-import android.os.Environment;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup.LayoutParams;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -25,6 +26,7 @@ import com.musicplus.R;
 import com.musicplus.app.MainApplication;
 import com.musicplus.entry.AudioEntry;
 import com.musicplus.media.AudioDecoder;
+import com.musicplus.media.AudioDecoder.OnAudioDecoderListener;
 import com.musicplus.media.MultiRawAudioPlayer;
 import com.musicplus.media.MultiRawAudioPlayer.OnRawAudioPlayListener;
 import com.musicplus.media.VideoMuxer;
@@ -33,8 +35,13 @@ import com.musicplus.media.VideoRecorder.OnVideoRecordListener;
 import com.musicplus.utils.MD5Util;
 
 /**
- * 创作页面
  * 
+ * follow the steps below:<br>
+ * <ol>
+ * <li>choose music as video's audio track</li>
+ * <li>begin to record video</li>
+ * <li>finish the recording</li>
+ * </ol>
  * @author Darcy
  */
 public class ComposeActivity extends BaseActivity implements View.OnClickListener, OnRawAudioPlayListener{
@@ -50,6 +57,8 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 	private MultiRawAudioPlayer mBackMisicPlayer;
 	private String mTempMixAudioFile;
 	private  CyclicBarrier recordBarrier = new CyclicBarrier(2);
+	private ProgressDialog dlgDecoding;
+	private ProgressDialog dlgMuxing;
 	
 	private int recordState;
 	private final static String TEMP_RECORD_VIDEO_FILE = MainApplication.TEMP_VIDEO_PATH + "/temp_record_video";
@@ -60,6 +69,10 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 	private final static int RECORD_STATE_DONE = 0x3;
 	
 	private final static int REQUEST_CODE_ADD_MUSIC = 0x1;
+	
+	public final static String EX_INCLUDE_VIDEO_AUDIO = "include-video-audio";
+	private boolean isIncludeVideoAudio = false;
+	private static final int MAX_PROGRESS = 100;
 	
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -79,9 +92,22 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 		videoRecorder = new VideoRecorder(this, svVideoPreview, TEMP_RECORD_VIDEO_FILE,recordBarrier);
 		recordState = RECORD_STATE_INITIAL;
 		
+		isIncludeVideoAudio = getIntent().getBooleanExtra(EX_INCLUDE_VIDEO_AUDIO, false);
+		
 		LayoutParams lpPre = svVideoPreview.getLayoutParams();
 		lpPre.height = 1080 * 640 / 480;
 		svVideoPreview.setLayoutParams(lpPre);
+		
+		dlgDecoding = new ProgressDialog(this);
+		dlgDecoding.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
+		dlgDecoding.setCancelable(false);
+		dlgDecoding.setCanceledOnTouchOutside(false);
+		dlgDecoding.setMax(MAX_PROGRESS);
+		
+		dlgMuxing = new ProgressDialog(this);
+		dlgMuxing.setProgressStyle(ProgressDialog.STYLE_SPINNER);
+		dlgMuxing.setCancelable(false);
+		dlgMuxing.setCanceledOnTouchOutside(false);
 	}
 
 	@Override
@@ -94,7 +120,6 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 			performAddMusic();
 			break;
 		case R.id.btn_preview:
-			new MixVideoAndAudioTask().execute();
 			break;
 		case R.id.btn_re_record:
 			performRedoRecord();
@@ -129,6 +154,7 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
 		super.onActivityResult(requestCode, resultCode, data);
 		if(requestCode == REQUEST_CODE_ADD_MUSIC && resultCode == RESULT_OK){
+			dlgDecoding.show();
 			AudioEntry audioEntry = (AudioEntry) data.getSerializableExtra("audio");
 			new DecodeAudioTask(audioEntry).execute();
 		}
@@ -151,15 +177,20 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 			playBackgroundMusic();
 		}else if(recordState == RECORD_STATE_RECORDING){
 			recordState = RECORD_STATE_DONE;
+			dlgMuxing.setMessage(getString(R.string.please_wait));
+			dlgMuxing.show();
 			videoRecorder.release();
 			recordBarrier.reset();
 			stopBackgroundMusic();
 			btnRecord.postDelayed(new Runnable() {
 				@Override
 				public void run() {
-					new MixVideoAndAudioTask().execute();
+					final boolean hasBackgroundMisic = hasBackgroundMisic();
+					if(hasBackgroundMisic){
+						new MixVideoAndAudioTask().execute();
+					}
 				}
-			}, 5000);
+			}, 500);
 		}
 	}
 	
@@ -186,6 +217,7 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 	private void performRedoRecord(){
 		recordState = RECORD_STATE_INITIAL;
 		btnRecord.setText(R.string.record);
+		videoRecorder.release();
 		videoRecorder.startPreview();
 	}
 	
@@ -203,24 +235,29 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 			mBackMisicPlayer.stop();
 	}
 	
+	private boolean hasBackgroundMisic(){
+		return addAudioTracks != null && addAudioTracks.size() > 0;
+	}
+	
 	class MixVideoAndAudioTask extends AsyncTask<Void, Long, Boolean>{
 
 		@Override
 		protected Boolean doInBackground(Void... params) {
 			String videoFile = MainApplication.RECORD_VIDEO_PATH + "/test.mp4";
 			VideoMuxer videoMuxer = VideoMuxer.createVideoMuxer(videoFile);
-			videoMuxer.mixRawAudio(new File(TEMP_RECORD_VIDEO_FILE), new File(mTempMixAudioFile));
+			videoMuxer.mixRawAudio(new File(TEMP_RECORD_VIDEO_FILE), new File(mTempMixAudioFile), isIncludeVideoAudio);
 			return true;
 		}
 		
 		@Override
 		protected void onPostExecute(Boolean result) {
 			super.onPostExecute(result);
-			Toast.makeText(ComposeActivity.this, "生成视频完成", 3000).show();
+			dlgMuxing.cancel();
+			Toast.makeText(ComposeActivity.this, getString(R.string.mix_video_success), Toast.LENGTH_SHORT).show();
 		}
 	}
 	
-	class DecodeAudioTask extends AsyncTask<Void, Long, Boolean>{
+	class DecodeAudioTask extends AsyncTask<Void, Double, Boolean>{
 
 		AudioEntry decAudio;
 		
@@ -233,6 +270,7 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 			String decodeFilePath = MainApplication.TEMP_AUDIO_PATH + "/" + MD5Util.getMD5Str(decAudio.fileUrl);
 			File decodeFile = new File(decodeFilePath);
 			if(decodeFile.exists()){
+				publishProgress(1.0);
 				decAudio.fileUrl = decodeFilePath;
 				return true;
 			}
@@ -241,14 +279,20 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 				FileInputStream fisWavFile = null;
 				FileOutputStream fosRawAudioFile = null;
 				try {
-					 fisWavFile = new FileInputStream(decAudio.fileUrl);
+					 File srcAudioFile = new File(decAudio.fileUrl);
+					 long audioFileSize = srcAudioFile.length();
+					 fisWavFile = new FileInputStream(srcAudioFile);
 					 fosRawAudioFile = new FileOutputStream(decodeFile);
 					 fisWavFile.read(new byte[44]);
 					 byte[] rawBuf = new byte[1024];
 					 int readCount;
+					 double totalReadCount = 44;
 					 while((readCount = fisWavFile.read(rawBuf)) != -1){
 						 fosRawAudioFile.write(rawBuf, 0, readCount);
+						 totalReadCount += readCount;
+						 publishProgress(totalReadCount/audioFileSize);
 					 }
+					 publishProgress(1.0);
 					 return true;
 				} catch (FileNotFoundException e) {
 					e.printStackTrace();
@@ -270,6 +314,12 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 				AudioDecoder audioDec = AudioDecoder.createDefualtDecoder(decAudio.fileUrl);
 				try {
 					decAudio.fileUrl = decodeFilePath;
+					audioDec.setOnAudioDecoderListener(new OnAudioDecoderListener() {
+						@Override
+						public void onDecode(byte[] decodedBytes, double progress)throws IOException {
+							publishProgress(progress);
+						}
+					});
 					audioDec.decodeToFile(decodeFilePath);
 					return true;
 				} catch (IOException e) {
@@ -280,25 +330,42 @@ public class ComposeActivity extends BaseActivity implements View.OnClickListene
 		}
 		
 		@Override
+		protected void onProgressUpdate(Double... values) {
+			super.onProgressUpdate(values);
+			dlgDecoding.setProgress((int) (MAX_PROGRESS * values[0]));
+		}
+		
+		@Override
 		protected void onPostExecute(Boolean result) {
 			super.onPostExecute(result);
 			if(result){
 				addMisicTrack(decAudio);
 			}
+			dlgDecoding.cancel();
+		}
+		
+		private void addMisicTrack(final AudioEntry decAudio){
+			if(addAudioTracks.contains(decAudio))
+				return;
+			
+			addAudioTracks.add(decAudio);
+			final View viewTrack = View.inflate(ComposeActivity.this, R.layout.listitem_audio_info, null);
+			TextView tvName = (TextView)viewTrack.findViewById(R.id.tv_file_name);
+			TextView tvArtist = (TextView)viewTrack.findViewById(R.id.tv_artist);
+			ImageView tvDel = (ImageView)viewTrack.findViewById(R.id.iv_play);
+			tvName.setText(decAudio.fileName);
+			tvArtist.setText(decAudio.artist);
+			tvDel.setImageResource(R.drawable.ic_delete);
+			tvDel.setOnClickListener(new View.OnClickListener() {
+				@Override
+				public void onClick(View v) {
+					addAudioTracks.remove(decAudio);
+					containerAudioTracks.removeView(viewTrack);
+				}
+			});
+			
+			containerAudioTracks.addView(viewTrack);
 		}
 	}
 	
-	private void addMisicTrack(AudioEntry decAudio){
-		if(addAudioTracks.contains(decAudio))
-			return;
-		
-		addAudioTracks.add(decAudio);
-		View viewTrack = View.inflate(this, R.layout.listitem_audio_info, null);
-		TextView tvName = (TextView)viewTrack.findViewById(R.id.tv_file_name);
-		TextView tvArtist = (TextView)viewTrack.findViewById(R.id.tv_artist);
-		tvName.setText(decAudio.fileName);
-		tvArtist.setText(decAudio.artist);
-		
-		containerAudioTracks.addView(viewTrack);
-	}
 }

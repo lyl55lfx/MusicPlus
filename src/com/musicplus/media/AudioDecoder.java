@@ -40,6 +40,12 @@ public abstract class AudioDecoder {
 	 }
 	 
 	 public interface OnAudioDecoderListener{
-		 void onDecode(byte[] decodedBytes) throws IOException;
+		 /**
+		  * monitor when processing decode
+		  * @param decodedBytes
+		  * @param progress range 0~1
+		  * @throws IOException
+		  */
+		 void onDecode(byte[] decodedBytes, double progress) throws IOException;
 	 }
 }

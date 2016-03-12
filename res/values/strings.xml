@@ -10,4 +10,8 @@
     <string name="re_record">重录</string>
     <string name="add_music_track">添加音轨</string>
     <string name="complete_record">完成录制</string>
+    <string name="record_exclude_video_audio">不包含视频音轨</string>
+    <string name="record_include_video_audio">包含视频音轨</string>
+    <string name="please_wait">可能要耗时比较长，请耐心等待</string>
+    <string name="mix_video_success">合成视频成功</string>
 </resources>

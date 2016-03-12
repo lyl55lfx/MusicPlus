@@ -35,7 +35,7 @@ public abstract class MultiAudioMixer {
 		
 		FileInputStream inputStream;
 		byte[][] allAudioBytes = new byte[fileSize][];
-		boolean[] streamsEnd = new boolean[fileSize];
+		boolean[] streamDoneArray = new boolean[fileSize];
 		byte[] buffer = new byte[512];
 		int offset;
 		
@@ -51,10 +51,10 @@ public abstract class MultiAudioMixer {
 				for(int streamIndex = 0 ; streamIndex < fileSize ; ++streamIndex){
 					
 					inputStream = audioFileStreams[streamIndex];
-					if(!streamsEnd[streamIndex] && (offset = inputStream.read(buffer)) != -1){
+					if(!streamDoneArray[streamIndex] && (offset = inputStream.read(buffer)) != -1){
 						allAudioBytes[streamIndex] = Arrays.copyOf(buffer,buffer.length);
 					}else{
-						streamsEnd[streamIndex] = true;
+						streamDoneArray[streamIndex] = true;
 						allAudioBytes[streamIndex] = new byte[512];
 					}
 				}
@@ -65,7 +65,7 @@ public abstract class MultiAudioMixer {
 				}
 				
 				boolean done = true;
-				for(boolean streamEnd : streamsEnd){
+				for(boolean streamEnd : streamDoneArray){
 					if(!streamEnd){
 						done = false;
 					}

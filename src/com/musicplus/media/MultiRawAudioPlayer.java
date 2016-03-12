@@ -148,8 +148,8 @@ public class MultiRawAudioPlayer {
 			}
 			
 			boolean hasMixBefore = false;
-			String mixFilePath = MainApplication.TEMP_AUDIO_PATH + "/" +MD5Util.getMD5Str(sbMix.toString());
-			File tempMixFile = new File(mixFilePath);
+			final String mixFilePath = MainApplication.TEMP_AUDIO_PATH + "/" +MD5Util.getMD5Str(sbMix.toString());
+			final File tempMixFile = new File(mixFilePath);
 			
 			final AudioTrack audioTrack = createTrack();
 			audioTrack.play();
@@ -180,12 +180,12 @@ public class MultiRawAudioPlayer {
 						}
 						
 						if(totalSize >= singleAudioFile.length()){
-							Message completeMsg = mEventHandler.obtainMessage(MSG_PLAY_COMPLETE, tempMixFile.getAbsolutePath());
+							Message completeMsg = mEventHandler.obtainMessage(MSG_PLAY_COMPLETE, mixFilePath);
 							mEventHandler.sendMessage(completeMsg);
 						}
 						
 						if(stopped){
-							Message stopMsg = mEventHandler.obtainMessage(MSG_PLAY_STOP, tempMixFile.getAbsolutePath());
+							Message stopMsg = mEventHandler.obtainMessage(MSG_PLAY_STOP, mixFilePath);
 							mEventHandler.sendMessage(stopMsg);
 						}
 					} catch (FileNotFoundException e) {
@@ -208,7 +208,6 @@ public class MultiRawAudioPlayer {
 				
 				// multi audios
 				MultiAudioMixer mixer = MultiAudioMixer.createAudioMixer();
-				final File mixAudioTempFile = tempMixFile;
 				mixer.setOnAudioMixListener(new OnAudioMixListener() {
 					
 					boolean isFirst = false;
@@ -216,12 +215,12 @@ public class MultiRawAudioPlayer {
 					public void onMixing(byte[] mixBytes) throws IOException {
 						if(stopped){
 							fosTempMixAudio.close();
-							Message stopMsg = mEventHandler.obtainMessage(MSG_PLAY_STOP, mixAudioTempFile.getAbsolutePath());
+							Message stopMsg = mEventHandler.obtainMessage(MSG_PLAY_STOP, mixFilePath);
 							mEventHandler.sendMessage(stopMsg);
 							throw new AudioMixException("stop play the mix audios.");
 						}else{
 							fosTempMixAudio.write(mixBytes);
-							if(isFirst){
+							if(!isFirst){
 								isFirst = true;
 								mEventHandler.sendEmptyMessage(MSG_PLAY_START);
 								waitForRecordStart();
@@ -232,8 +231,6 @@ public class MultiRawAudioPlayer {
 					
 					@Override
 					public void onMixError(int errorCode) {
-						
-						mixAudioTempFile.delete();
 						
 						if(fosTempMixAudio != null){
 							try {
@@ -254,7 +251,7 @@ public class MultiRawAudioPlayer {
 							}
 						}
 						
-						Message completeMsg = mEventHandler.obtainMessage(MSG_PLAY_COMPLETE, mixAudioTempFile.getAbsolutePath());
+						Message completeMsg = mEventHandler.obtainMessage(MSG_PLAY_COMPLETE, mixFilePath);
 						mEventHandler.sendMessage(completeMsg);
 					}
 				});

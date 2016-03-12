@@ -8,9 +8,18 @@
     android:paddingTop="@dimen/activity_vertical_margin"
     tools:context="com.musicplus.app.MainActivity" >
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/hello_world" />
+    <Button android:id="@+id/btn_record_exclude_video_audio"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_margin="20dp"
+        android:onClick="onExcludeClick"
+        android:text="@string/record_exclude_video_audio"/>
 
+    <Button android:id="@+id/btn_record_include_video_audio"
+        android:layout_below="@+id/btn_record_exclude_video_audio"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_margin="20dp"
+        android:onClick="onIncludeClick"
+        android:text="@string/record_include_video_audio"/>
 </RelativeLayout>

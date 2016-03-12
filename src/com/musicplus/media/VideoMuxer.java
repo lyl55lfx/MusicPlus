@@ -34,7 +34,13 @@ public abstract class VideoMuxer {
 		return new Mp4Muxer(outputVideo);
 	}
 	
-	public abstract void mixRawAudio(File videoFile,File rawAudioFile);
+	/**
+	 * mix raw audio into video
+	 * @param videoFile
+	 * @param rawAudioFile 
+	 * @param includeAudioInVideo
+	 */
+	public abstract void mixRawAudio(File videoFile,File rawAudioFile,boolean includeAudioInVideo);
 	
 	/**
 	 * use android sdk MediaMuxer
@@ -43,7 +49,7 @@ public abstract class VideoMuxer {
 	 */
 	private static class Mp4Muxer extends VideoMuxer{
 
-		private static final String AUDIO_MIME = "audio/mp4a-latm";
+		private final static String AUDIO_MIME = "audio/mp4a-latm";
 		private final static long audioBytesPerSample = 44100*16/8;
 
 		private long rawAudioSize;
@@ -53,12 +59,11 @@ public abstract class VideoMuxer {
 		}
 
 		@Override
-		public void mixRawAudio(File videoFile, File rawAudioFile) {
+		public void mixRawAudio(File videoFile, File rawAudioFile,boolean includeAudioInVideo) {
 			final String videoFilePath = videoFile.getAbsolutePath();
 
 			MediaMuxer videoMuxer = null;
 			try {
-				
 				
 				final String outputVideo = mOutputVideo;
 				videoMuxer = new MediaMuxer(outputVideo,MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
@@ -76,21 +81,23 @@ public abstract class VideoMuxer {
 						break;
 					}
 				}
-				
+
 				int videoTrackIndex = videoMuxer.addTrack(videoFormat);
-				
 				int audioTrackIndex = 0;
 				
-				//decode 
-				AndroidAudioDecoder audioDecoder = new AndroidAudioDecoder(videoFilePath);
-				String extractAudioFilePath = MainApplication.RECORD_AUDIO_PATH + "/" + System.currentTimeMillis();
-				audioDecoder.decodeToFile(extractAudioFilePath);
+				//extract and decode audio
+				FileInputStream fisExtractAudio = null;
+				if(includeAudioInVideo){
+					AndroidAudioDecoder audioDecoder = new AndroidAudioDecoder(videoFilePath);
+					String extractAudioFilePath = MainApplication.RECORD_AUDIO_PATH + "/" + System.currentTimeMillis();
+					audioDecoder.decodeToFile(extractAudioFilePath);
+					
+					File extractAudioFile = new File(extractAudioFilePath);
+					fisExtractAudio = new FileInputStream(extractAudioFile);
+				}
+				FileInputStream fisMixAudio = new FileInputStream(rawAudioFile);
 				
-				File extractAudioFile = new File(extractAudioFilePath);
-				final FileInputStream fisExtractAudio = new FileInputStream(extractAudioFile);
-				final FileInputStream fisMixAudio = new FileInputStream(rawAudioFile);
-				
-				boolean readExtractAudioEOS = true;
+				boolean readExtractAudioEOS = includeAudioInVideo ? false : true;
 				boolean readMixAudioEOS = false;
 				byte[] extractAudioBuffer = new byte[4096];
 				byte[] mixAudioBuffer = new byte[4096];
@@ -212,8 +219,11 @@ public abstract class VideoMuxer {
 				        videoMuxer.start(); //start muxer
 				    }
 		        }
-				
-		        fisExtractAudio.close();
+		        
+				if(fisExtractAudio != null){
+					 fisExtractAudio.close();
+				}
+		       
 		        fisMixAudio.close();
 		        audioEncoder.stop();
 			    audioEncoder.release();

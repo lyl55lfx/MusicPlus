@@ -27,6 +27,7 @@ import com.musicplus.R;
 import com.musicplus.app.service.LocalMusicPlayService;
 import com.musicplus.app.service.MusicPlayInterface;
 import com.musicplus.entry.AudioEntry;
+import com.musicplus.media.MediaUtils;
 
 /**
  * 选择合成音频
@@ -170,7 +171,15 @@ public class AudioChooserActivity extends BaseActivity {
 
 				AudioEntry audioEntry = null;
 
+				String fileUrl = null;
+				boolean isMatchAudioFormat = false;
 				do {
+					fileUrl = cursor.getString(9);
+					isMatchAudioFormat = MediaUtils.isMatchAudioFormat(fileUrl, 44100, 2);
+					if(!isMatchAudioFormat){
+						continue;
+					}
+					
 					audioEntry = new AudioEntry();
 					audioEntry.id = cursor.getLong(0);
 					// 文件名
@@ -190,7 +199,7 @@ public class AudioChooserActivity extends BaseActivity {
 					// 文件大小
 					audioEntry.size = cursor.getString(8);
 					// 文件路径
-					audioEntry.fileUrl = cursor.getString(9);
+					audioEntry.fileUrl = fileUrl;
 					audios.add(audioEntry);
 				} while (cursor.moveToNext());
 

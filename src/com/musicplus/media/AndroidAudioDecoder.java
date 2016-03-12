@@ -63,6 +63,7 @@ public class AndroidAudioDecoder extends AudioDecoder{
         ByteBuffer[] codecInputBuffers = codec.getInputBuffers();
         ByteBuffer[] codecOutputBuffers = codec.getOutputBuffers();
         
+        final double audioDurationUs = mediaFormat.getLong(MediaFormat.KEY_DURATION);
         final long kTimeOutUs = 5000;
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         boolean sawInputEOS = false;
@@ -108,12 +109,11 @@ public class AndroidAudioDecoder extends AudioDecoder{
 				        totalRawSize += data.length;
 				        fosDecoder.write(data);
 				        if(mOnAudioDecoderListener != null)
-				        	mOnAudioDecoderListener.onDecode(data);
+				        	mOnAudioDecoderListener.onDecode(data, info.presentationTimeUs / audioDurationUs);
+				        DLog.i(TAG, mEncodeFile + " presentationTimeUs : " + info.presentationTimeUs);
 	        		}
 			        
 			        codec.releaseOutputBuffer(outputBufIndex, false);
-			        
-			        DLog.i(TAG, mEncodeFile + "presentationTimeUs : " + info.presentationTimeUs);
 			        
 			        if ((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
 			            DLog.i(TAG, "saw output EOS.");
@@ -129,6 +129,9 @@ public class AndroidAudioDecoder extends AudioDecoder{
 			    }
 			}
 			rawAudioInfo.size = totalRawSize;
+			
+			if(mOnAudioDecoderListener != null)
+	        	mOnAudioDecoderListener.onDecode(null, 1);
 			
             DLog.i(TAG, "decode "+outFile+" cost " + (System.currentTimeMillis() - beginTime) +" milliseconds !");
 
