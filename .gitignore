@@ -36,7 +36,6 @@ proguard/
 local.properties
 
 *.pydevproject
-.project
 .metadata
 bin/**
 tmp/**
@@ -46,8 +45,6 @@ tmp/**/*
 *.swp
 *~.nib
 local.properties
-.classpath
-.settings/
 .loadpath
 
 # External tool builders
