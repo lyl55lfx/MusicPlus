@@ -25,4 +25,9 @@ public class MainActivity extends BaseActivity{
 		composeIntent.putExtra(ComposeActivity.EX_INCLUDE_VIDEO_AUDIO, true);
 		startActivity(composeIntent);
 	}
+	
+	public void onMixAudioClick(View v){
+		Intent mixAudioIntent  = new Intent(this, MixAudioActivity.class);
+		startActivity(mixAudioIntent);
+	}
 }

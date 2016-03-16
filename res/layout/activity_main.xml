@@ -22,4 +22,12 @@
         android:layout_margin="20dp"
         android:onClick="onIncludeClick"
         android:text="@string/record_include_video_audio"/>
+    
+    <Button android:id="@+id/btn_mix_audios"
+        android:layout_below="@+id/btn_record_include_video_audio"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:layout_margin="20dp"
+        android:onClick="onMixAudioClick"
+        android:text="@string/mix_audios"/>
 </RelativeLayout>

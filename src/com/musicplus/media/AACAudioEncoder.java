@@ -69,22 +69,18 @@ class AACAudioEncoder extends AudioEncoder {
 						}
 
 						if (readRawAudioEOS) {
-							audioEncoder.queueInputBuffer(inputBufIndex, 0, 0,
-									0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+							audioEncoder.queueInputBuffer(inputBufIndex, 0, 0,0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
 							sawInputEOS = true;
 						} else {
-							inputBuffer
-									.put(rawInputBytes, 0, readRawAudioCount);
+							inputBuffer.put(rawInputBytes, 0, readRawAudioCount);
 							rawAudioSize += readRawAudioCount;
-							audioEncoder.queueInputBuffer(inputBufIndex, 0,
-									readRawAudioCount, audioTimeUs, 0);
+							audioEncoder.queueInputBuffer(inputBufIndex, 0,readRawAudioCount, audioTimeUs, 0);
 							audioTimeUs = (long) (1000000 * (rawAudioSize / 2.0) / audioBytesPerSample);
 						}
 					}
 				}
 
-				outputBufIndex = audioEncoder.dequeueOutputBuffer(
-						outBufferInfo, 10000);
+				outputBufIndex = audioEncoder.dequeueOutputBuffer(outBufferInfo, 10000);
 				if (outputBufIndex >= 0) {
 
 					// Simply ignore codec config buffers.
@@ -97,8 +93,7 @@ class AACAudioEncoder extends AudioEncoder {
 					if (outBufferInfo.size != 0) {
 						ByteBuffer outBuffer = audioOutputBuffers[outputBufIndex];
 						outBuffer.position(outBufferInfo.offset);
-						outBuffer.limit(outBufferInfo.offset
-								+ outBufferInfo.size);
+						outBuffer.limit(outBufferInfo.offset+ outBufferInfo.size);
 						DLog.i(TAG,
 								String.format(
 										" writing audio sample : size=%s , presentationTimeUs=%s",
@@ -137,6 +132,7 @@ class AACAudioEncoder extends AudioEncoder {
 				}
 			}
 
+			DLog.e(TAG,"acc encode done");
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
 		} catch (IOException e) {
@@ -162,7 +158,7 @@ class AACAudioEncoder extends AudioEncoder {
 		format.setInteger(MediaFormat.KEY_CHANNEL_COUNT, 2);
 		format.setInteger(MediaFormat.KEY_SAMPLE_RATE, 44100);
 		format.setInteger(MediaFormat.KEY_AAC_PROFILE,
-				MediaCodecInfo.CodecProfileLevel.AACObjectLD);
+				MediaCodecInfo.CodecProfileLevel.AACObjectLC);
 		codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
 		return codec;
 	}
