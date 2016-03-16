@@ -16,4 +16,7 @@
     <string name="please_wait">可能要耗时比较长，请耐心等待</string>
     <string name="mix_video_success">合成视频成功</string>
     <string name="execute_mix_audio">开始混音</string>
+    <string name="play_mix_audio">播放混音</string>
+    <string name="pause_play">暂停播放</string>
+    <string name="continue_play">继续播放</string>
 </resources>

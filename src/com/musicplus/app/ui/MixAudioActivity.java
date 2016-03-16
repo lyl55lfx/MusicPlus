@@ -9,17 +9,24 @@ import java.util.HashSet;
 import java.util.Set;
 
 import android.app.ProgressDialog;
+import android.content.ComponentName;
 import android.content.Intent;
+import android.content.ServiceConnection;
+import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.IBinder;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.musicplus.R;
 import com.musicplus.app.MainApplication;
+import com.musicplus.app.service.LocalMusicPlayService;
+import com.musicplus.app.service.MusicPlayInterface;
 import com.musicplus.entry.AudioEntry;
 import com.musicplus.media.AudioDecoder;
 import com.musicplus.media.AudioEncoder;
@@ -36,12 +43,28 @@ public class MixAudioActivity extends BaseActivity implements
 
 	private Button btnAddMusic;
 	private Button btnMix;
+	private Button btnPlayMixAudio;
 	private LinearLayout containerAudioTracks;
 	private ProgressDialog dlgDecoding;
 	private ProgressDialog dlgMixing;
+	private String mFinalMixAudioFile;
 
 	private Set<AudioEntry> addAudioTracks = new HashSet<AudioEntry>();
 
+	private MusicPlayInterface mMisPlayService;
+	
+	private ServiceConnection mMisSerciveConn = new ServiceConnection() {
+		@Override
+		public void onServiceDisconnected(ComponentName name) {
+			mMisPlayService = null;
+		}
+		
+		@Override
+		public void onServiceConnected(ComponentName name, IBinder service) {
+			mMisPlayService = ((LocalMusicPlayService.LocalMusicPlayBinder)service).getService();
+		}
+	};
+	
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
@@ -49,9 +72,11 @@ public class MixAudioActivity extends BaseActivity implements
 		btnAddMusic = findView(R.id.btn_add_music);
 		btnMix = findView(R.id.btn_mix_audio);
 		containerAudioTracks = findView(R.id.container_musics);
+		btnPlayMixAudio = findView(R.id.btn_play_mix_audio);
 		btnAddMusic.setOnClickListener(this);
 		btnMix.setOnClickListener(this);
-
+		btnPlayMixAudio.setOnClickListener(this);
+		
 		dlgDecoding = new ProgressDialog(this);
 		dlgDecoding.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
 		dlgDecoding.setCancelable(false);
@@ -62,8 +87,17 @@ public class MixAudioActivity extends BaseActivity implements
 		dlgMixing.setProgressStyle(ProgressDialog.STYLE_SPINNER);
 		dlgMixing.setCancelable(false);
 		dlgMixing.setCanceledOnTouchOutside(false);
+		
+		Intent misIntent = new Intent(this,LocalMusicPlayService.class);
+		bindService(misIntent, mMisSerciveConn, BIND_AUTO_CREATE);
 	}
 
+	@Override
+	protected void onDestroy() {
+		super.onDestroy();
+		unbindService(mMisSerciveConn);
+	}
+	
 	@Override
 	public void onClick(View v) {
 		switch (v.getId()) {
@@ -72,6 +106,9 @@ public class MixAudioActivity extends BaseActivity implements
 			break;
 		case R.id.btn_mix_audio:
 			performMixAudio();
+			break;
+		case R.id.btn_play_mix_audio:
+			performPlayMixAudio();
 			break;
 		}
 	}
@@ -89,6 +126,17 @@ public class MixAudioActivity extends BaseActivity implements
 		}
 	}
 
+	private void performPlayMixAudio(){
+		
+		if(mFinalMixAudioFile == null)
+			return;
+		
+		File accFile = new File(mFinalMixAudioFile);
+		if(accFile.exists()){
+			mMisPlayService.play(Uri.fromFile(accFile));
+		}
+	}
+	
 	@Override
 	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
 		super.onActivityResult(requestCode, resultCode, data);
@@ -162,15 +210,17 @@ public class MixAudioActivity extends BaseActivity implements
 					e.printStackTrace();
 				}
 			}
-			
 			AudioEncoder accEncoder =  AudioEncoder.createAccEncoder(rawAudioFile);
-			accEncoder.encodeToFile(MainApplication.RECORD_AUDIO_PATH + "/MixAudioTest.acc");
+			String finalMixPath = MainApplication.RECORD_AUDIO_PATH + "/MixAudioTest.acc";
+			accEncoder.encodeToFile(finalMixPath);
+			mFinalMixAudioFile = finalMixPath;
 			return true;
 		}
 
 		@Override
 		protected void onPostExecute(Boolean result) {
 			super.onPostExecute(result);
+			Toast.makeText(MixAudioActivity.this, "混音成功，并编码成ACC格式", Toast.LENGTH_SHORT).show();
 			dlgMixing.cancel();
 		}
 	}

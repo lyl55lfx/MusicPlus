@@ -132,7 +132,7 @@ class AACAudioEncoder extends AudioEncoder {
 				}
 			}
 
-			DLog.e(TAG,"acc encode done");
+			DLog.i(TAG,"acc encode done");
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
 		} catch (IOException e) {
